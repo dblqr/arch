@@ -24,8 +24,6 @@ _Define a repeatable consistant architecture for the facilitation of a productio
 ## AWS Accounts and Access Model
 
 <img src="files/arch-Permissions Access.png">
-<br>
-<br>
 
 The environment will use four AWS accounts under a single AWS Organization:
 
@@ -46,8 +44,6 @@ From the Management Account, global governance is enforced using Service Control
 ### Application Environments
 
 <img src="files/arch-Architecture.png">
-<br>
-<br>
 
 The proposed solution is as follows:
 
@@ -83,8 +79,6 @@ IAM Roles in other accounts for access
 ## Payments Event Driven Architecture
 
 <img src="files/arch-Application.drawio.png">
-<br>
-<br>
 
 External users access the system through CloudFront, which serves static assets from S3 and routes dynamic requests to the public ALB. Traffic is then forwarded to the EKS cluster via the public ingress controller, where the Payments Web and Payments API services run.
 
@@ -103,10 +97,8 @@ SES handles email notifications such as receipts or alerts.
 **<center>_Build -> Test -> Deploy -> Observe -> Promote_</center>**
 
 <img src="files/arch-CI_CD Process.drawio.png">
-<br>
-<br>
 
-For local development the developers have the ability to run the application stack locally either using docker or docker compose. Unit and functional tests can run locally against the application.
+For local development, the developers have the ability to run the application stack locally either using docker or docker compose. Unit and functional tests can run locally against the application.
 
 When a PR is created, a temporary environment spins up with app dependencies and infra dependencies, running integration and E2E tests against that created environment. This allows developers to ability to integrate with other services like the full run of Payments API process without touching upper environments.
 
