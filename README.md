@@ -13,12 +13,12 @@ _Define a repeatable consistant architecture for the facilitation of a productio
 
 ## The Tools
 
-- Github Actions
+- **Github Actions**
   - Handles Builds, Tests and Triggers ArgoCD Deployments
-- EKS
-- ArgoCD
+- **EKS**
+- **ArgoCD**
   - Deployed in the management account
-- Argo Rollouts
+- **Argo Rollouts**
   - Used to facilitate canary deployments
 
 ## AWS Accounts and Access Model
@@ -27,13 +27,13 @@ _Define a repeatable consistant architecture for the facilitation of a productio
 
 The environment will use four AWS accounts under a single AWS Organization:
 
-- Management Account – centralized governance, billing, and global policy enforcement.
+- **Management Account** – centralized governance, billing, and global policy enforcement.
 
-- Test Account – isolated environment for PR Envs, functional and integration testing.
+- **Test Account** – isolated environment for PR Envs, functional and integration testing and Dev Deploys.
 
-- Pre-prod Account – staging environment mirroring production for performance and release validation.
+- **Pre-prod Account** – staging environment mirroring production for performance and release validation.
 
-- Production Account – isolated, least-privilege environment for live workloads.
+- **Production Account** – isolated, least-privilege environment for live workloads.
 
 This access model provides granular control of user onboarding and offboarding by integrating with IAM Identity Center (AWS SSO) or external identity providers such as Okta. Permission sets can be centrally defined and assigned per account, reducing operational overhead while maintaining strict boundaries.
 
@@ -102,7 +102,7 @@ For local development, the developers have the ability to run the application st
 
 When a PR is created, a temporary environment spins up with app dependencies and infra dependencies, running integration and E2E tests against that created environment. This allows developers to ability to integrate with other services like the full run of Payments API process without touching upper environments.
 
-Once approved and tested, PRs are queued to merge into main sequentially using a merge queue. Once the merge takes place a deploy occurs to the dev environment and the PR env is spun down. Once the application is available smoke and E2E tests run.
+Once approved and tested, PRs are queued to merge into main sequentially using a merge queue. Once the merge takes place a deploy occurs to the test environment and the PR env is spun down. Once the application is available smoke and E2E tests run.
 
 If dev tests pass, the build is promoted to pre-prod for smoke, E2E, and performance, and regression testing.
 
