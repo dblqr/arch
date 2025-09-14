@@ -113,17 +113,17 @@ Cross-account IAM roles in each workload account will be used for delegated acce
 
 <img src="files/arch-Application.png">
 
-External users access the system through CloudFront, which serves static assets from S3 and routes dynamic requests to the public ALB. Traffic is then forwarded to the EKS cluster via the public ingress controller, where the Payments Web and Payments API services run.
+External users access the system through CloudFront, which serves static frontend assets from S3 and routes dynamic requests to the public ALB. Traffic is then forwarded to the EKS cluster via the public ingress controller, where the Payments Web and Payments API services run.
 
 Internal staff are able to connect over VPN into the internal ALB, which targets the internal ingress controller and exposes the Admin Web tool securely which has access to the payments API and web application.
 
-When a payment is submitted by a user, the Payments API validates the request and records the transaction in DynamoDB (`status = processing`) with a UUID for idempotency while archiving the raw payload to S3.
+When a payment is submitted by a user, the Payments API validates the request and records the transaction in DynamoDB (`status = processing`) archiving the raw payload to S3 and triggering its processing using eventbridge.
 
-An `S3 -> SQS -> Lambda` pipeline then moves the work into background processing. The Lambda worker (or equivalent EKS worker) consumes messages from SQS, updates DynamoDB to mark the payment as complete, and then persists transactional data into RDS (with read replicas for scale), and indexes the transaction into OpenSearch for fast search and reporting.
+An `S3 -> SQS -> Lambda` pipeline then moves the work into background processing. The Lambda worker consumes messages from SQS, updates DynamoDB to mark the payment as complete, and then persists transactional data into RDS (with read replicas for scale and reporting), and indexes the transaction into OpenSearch for fast search and reporting.
 
 If the Lambda Function fails at any point, retry logic is built into the system so the message stays in the queue until re-processed. After max attempts it goes to a DLQ for later replay.
 
-SES handles email notifications such as receipts or alerts.
+SES also handles email notifications such as receipts or alerts when the process completes or fails.
 
 <a name="secrets-management-in-eks"></a>
 
@@ -135,11 +135,30 @@ All secrets will be stored in repository using [SOPS](https://github.com/getsops
 
 The [External Secrets Operator](https://external-secrets.io/latest/provider/aws-secrets-manager/) connects Kubernetes to AWS Secrets Manager or SSM Parameter Store through IAM Roles for Service Accounts (IRSA).
 
-A ClusterSecretStore resource defines the AWS provider, and ExternalSecret resources specify which secrets to fetch. The operator retrieves the values securely using the IAM role and syncs them into native Kubernetes Secrets.
+A ClusterSecretStore resource defines the provider to use, in our case Secrets Manager. ExternalSecret resources specify which secrets to fetch. The operator retrieves the values securely using an IAM role and syncs them into Kubernetes Secrets.
 
-Applications then consume these secrets through environment variables or mounted volumes without needing direct AWS credentials. Whenever the underlying secret is updated in AWS, the operator automatically refreshes the Kubernetes Secret on its configured sync interval, ensuring applications always use the latest values while keeping sensitive data managed centrally in AWS.
+```yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: aws-secretsmanager
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      role: arn:aws:iam::123456789012:role/application-external-secrets # limits the scope of what secrets this resource can access
+      region: us-east-1
+      auth:
+        secretRef:
+          databaseSecretRef:
+            name: database-secret
+            key: database-key
+          apiSecretRef:
+            name: api-secret
+            key: api-key
+```
 
-Database credentials as well as external payments provider API's will be stored and pulled down from Secrets Manager and consumed by the application.
+The benefit is that applications consume these secrets through environment variables or mounted volumes without needing direct AWS credentials. Whenever the underlying secret is updated in AWS, the operator automatically refreshes the Kubernetes Secret on its configured sync interval, This ensures applications always are using the latest secret version while keeping sensitive data managed centrally in AWS.
 
 <a name="the-deployment-process"></a>
 
@@ -163,13 +182,13 @@ Only after all tests pass and approved, the build is promoted to production. The
 
 ## Deployments With Helm Charts and ArgoCD
 
-<center><img src="files/arch-ArgoCD.png"></center>
+<img src="files/arch-ArgoCD.png">
 
-To facilitate the deployment of the application we are utilizing application helm charts which live alongside the application and are also treated as a versioned and released object.
+To facilitate the deployment of the application we are utilizing application helm charts which live alongside the application and are also treated as a versioned artifact.
 
-When a build and release for the application takes place, the helm chart is versioned and released as well and pushed up to a chart repository (either ECR or Chart Museum, ECR in my examples).
+When a build and release for the application takes place, the helm chart is versioned and released and pushed up to a chart repository (ECR in the example).
 
-From there the CI/CD process triggers an API call to argocd to deploy the specific version of the built and released helm chart which contains the released application. The deployment targets the specific environment based on where the the deployment process is in the merge queue.
+From there, the CI/CD deployment process triggers an API call to argocd to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the the deployment process is in the merge queue.
 
 <a name="canary-releases-using-argocd-rollouts"></a>
 
@@ -177,7 +196,55 @@ From there the CI/CD process triggers an API call to argocd to deploy the specif
 
 <img src="files/arch-ArgoCD Rollout.png">
 
-To facilitate a canary release with rollbacks for Production we will utilize ArgoCD Rollouts. Due to the usage of ArgoCD for our deployment mechanism, using rollouts is a logical next step to expand the functionality of `release -> deploy -> observe` to allow for canary deployments during deployments.
+To facilitate a canary release with rollbacks in Production or other environments we will utilize ArgoCD Rollouts. Due to the usage of ArgoCD for our deployment mechanism, using rollouts is a logical next step to expand the functionality of `release -> deploy -> observe` to expand the base functionality of ArgoCD and Kubernetes ability to repair and keep applications healthy.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: example-rollout
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.15.4
+          ports:
+            - containerPort: 80
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+  strategy:
+    canary: # Indicates that the rollout should use the Canary strategy
+      maxSurge: "25%"
+      maxUnavailable: 0
+      steps:
+        - setWeight: 25 # sets 25% of traffic over 30 minutes
+        - pause:
+            duration: 30m
+        - setWeight: 50 # sets 50% of traffic over 15 minutes
+        - pause:
+            duration: 15m
+        - setWeight: 75 # sets 75% traffic over 5 minutes
+        - pause:
+            duration: 5m
+```
+
+In this example rollout, we are deploying 10 replicas of Nginx using a canary strategy. The new versions are introduced gradually by shifting traffic to the canary deployment in stages:
+
+- 25% for 30 minutes
+- 50% for 15 minutes
+- 75% for 5 minutes
+
+Once all gates have been met successfully, the rollout continues the deployment.
+
+To measure whether a gate is successful you utilize an analysis template to measure its success.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -205,9 +272,9 @@ spec:
             sum:trace.http.requests{service:app,env:prod}.rollup(sum)
 ```
 
-By using the Datadog provider we can monitor the application to only be deployed if that release is fulfilling the contract set by latency as well as making sure that error rates are within manageable limits before promoting.
+For example, by using a Datadog provider to gather metrics, we can monitor the rollout of the application by checking the latency of the application or other actionable metrics as well like error rates, before moving to the next gate.
 
-Rollouts can also be expanded to smoke testing for usage in lower environments vs using post sync hooks.
+Rollouts can also be expanded to smoke testing for usage in lower environments vs using ArgoCD post sync hooks.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -230,3 +297,77 @@ spec:
 <a name="the-observability-layer"></a>
 
 ## The Observability Layer
+
+Throughout the entire application release process, as well as at an AWS account and infrastructure level, observability, monitoring and alerting are baked into the release lifecycle.
+
+### Application Logging, Monitoring, and Tracing
+
+#### Application Monitoring
+
+Throughout the applications lifecycle we want to monitor for specific KPI's, for example:
+
+- Latency
+  - How long requests take.
+- Error rate
+  - How often they fail.
+- Throughput
+  - How many requests are processed.
+- Saturation
+  - How close the system is to resource limits.
+
+These metrics be collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visulization tools like Grafana.
+
+#### Application Logs
+
+We would be collecting and aggregating application logs from from many different sources like application logs/container logs from EKS, load balancer logs from the ALBS or K8s Ingresses, or CloudFront logs centralized via CloudWatch Logs or a log pipeline to Datadog or similar.
+
+Alerts and monitors should be setup for actionable remediation alongside runbooks versus causing alert fatigue.
+
+As an example, we _should_ alert on if there is increased latency in the application or if we have an anomalous increase in 5XX errors.
+
+#### Application Traces
+
+We should have the ability to trace a request from the user to the completion or failure of a users request. We could utilize Datadog APM to track tags and requests as it travels throughout the stack #TODO:
+
+### Infrastructure
+
+To allow for confidence in all our integrated systems we need to make sure that for all of our different types of shared infrastructure we have valid and actionable monitoring and alerting to go to the right teams and owners that can action upon them.
+
+- **Access logging**
+  - Are we monitoring IAM Identity center logins?
+  - Is GuardDuty enabled in all environments for intrusion detection?
+  - Are we alerting on failed AWS API attempts?
+  - Is root AWS user activity monitored? Is 2FA enabled for the root user?
+- **Network monitoring**
+  - Is a WAF setup at access layers?
+  - Are VPC flow logs enabled and monitored?
+  - Are we forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts?
+- **AWS Infrastructure**
+  - **EKS**
+    - Do we have monitoring and alerting setup for our EKS clusters?
+    - Application logs monitoring and alerting created?
+    - K8s audit logging enabled? Do we have alerts set for failed access to internal resources like secrets or logs? Failed attempts of pod or service account creation?
+    - Monitoring on node health and ready states?
+    - Pod scheduling failures?
+    - Alerting on application and shared resource pressure (CPU, memory, disk)?
+  - **RDS instances**
+    - RDS Instance monitoring and alerting for CPU and Memory utilization?
+    - Is storage autoscaling enabled for our RDS instances? Do we have monitors for these events?
+    - Alerting on replication lag?
+    - Do we have alerts for max connections and long running queries?
+  - **S3**
+    - Do we have S3 access logs and eventbridge logging setup?
+    - Do we have policies in place for bucket visibility?
+    - Are lifecycle policies setup?
+    - Are bucket objects KMS encrypted?
+  - **SQS**
+    - Do we have alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`
+    - Do we alert on thresholds for the Oldest message in the queue?
+    - Monitoring and alerting on if messages are in the DLQ?
+  - **DynamoDB**
+    - Are we monitoring latency and and throttling events on read/write events?
+  - **Lambda**
+    - Are we forwarding logs and event logs?
+    - Is monitoring and alerting setup for invocation errors and throttling?
+    - Do we have baseline alerts setup for lamdba execution durations?
+  ### Deployment Infrastructure
