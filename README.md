@@ -38,6 +38,8 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 - **Github Actions**
   - Handles Builds, Tests and Triggers ArgoCD Deployments
 - **EKS**
+- **Docker**
+- **Helm**
 - **ArgoCD**
   - Deployed in the management account
 - **Argo Rollouts**
@@ -51,13 +53,13 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 
 The environment will use four AWS accounts under a single AWS Organization:
 
-- **Management Account** – centralized governance, billing, and global policy enforcement.
+- **Management Account** – Centralized governance, billing, and global policy enforcement.
 
-- **Test Account** – isolated environment for PR Envs, functional and integration testing and Dev Deploys.
+- **Test Account** – Used for PR Env testing and Dev Deploys.
 
-- **Pre-prod Account** – staging environment mirroring production for performance and release validation.
+- **Pre-prod Account** – Staging environment mirroring production for performance and release validation.
 
-- **Production Account** – isolated, least-privilege environment for live workloads.
+- **Production Account** – Isolated, least-privilege environment for live workloads.
 
 This access model provides granular control of user onboarding and offboarding by integrating with IAM Identity Center (AWS SSO) or external identity providers such as Okta. Permission sets can be centrally defined and assigned per account, reducing operational overhead while maintaining strict boundaries.
 
@@ -75,19 +77,13 @@ A secure, multi-account AWS architecture with management and application account
 
 <img src="files/arch-Network-Architecture.png">
 
-A VPC with three public and private subnets distributed across multiple Availability Zones.
-
-External Load Balancer in front of the public subnets for internet-facing services, and Internal Load Balancer in front of the private subnets for internal-only access.
-
-An EKS cluster deployed only in the private subnets.
-
-CloudFront is used to expose both internal and external applications, providing TLS termination, caching, and global edge distribution for frontend traffic.
-
-Internal access to applications behind the internal load balancer provided through a VPN (e.g., Tailscale) that connects via a Transit Gateway from the management account.
-
-A dedicated NAT Gateway per AZ to avoid the single point of failure created by a shared NAT Gateway across all AZs.
-
-Core managed services: S3, DynamoDB, SQS, OpenSearch, and RDS integrated with the web app and Payments API for persistence, messaging, indexing, and relational workloads.
+- A VPC with three public and private subnets distributed across multiple Availability Zones.
+- An External Load Balancer in front of the public subnets for internet-facing services, and Internal Load Balancer in front of the private subnets for internal-only access.
+- An EKS cluster deployed only in the private subnets.
+- CloudFront is used to expose external applications, providing TLS termination, caching, and global edge distribution for frontend traffic.
+- Internal access to applications behind the internal load balancer provided through a VPN (e.g., Tailscale) that connects via network access from the management account.
+- A dedicated NAT Gateway per AZ to avoid the single point of failure created by a shared NAT Gateway across all AZs.
+- S3, DynamoDB, SQS, OpenSearch (or similar), and an RDS with a replica integrated with the Payments API for persistence, messaging, and relational workloads.
 
 All services run in private subnets across three Availability Zones. The NAT Gateways provide controlled outbound internet access for EKS nodes and workloads, while VPC Interface Endpoints enable private connectivity to AWS APIs. This design ensures internet-facing services remain isolated and internal systems communicate securely.
 
@@ -101,17 +97,19 @@ External users access the system through CloudFront which acts as a CDN serving 
 
 All traffic goes through an ALB which forwards to an HTTP gateway exposed via an ingress controller in EKS on port 443. External users come through the public internet facing ALB. Internal users go through an internal ALB which is routable through a VPN.
 
-Note that although the diagram does not show multiple instances, each deployment should contain multiple replicas spread out across multiple AZ’s with podAntiAffinity.
+Although the diagram does not show multiple instances, each deployment should contain multiple replicas spread out across multiple AZ’s with podAntiAffinity.
 
 All applications running in EKS must have a readiness and liveness check to allow for self healing in the event of an application error.
 
-Each application should have an IAM role + policy which makes short lived AWS credentials available to pods utilizing the AWS SDK.
+Each application should, if necessary, have an IAM role + policy which makes short lived AWS credentials available to pods utilizing the AWS SDK.
 
-Our applications follow the 12 factor pattern which allows for configuration via environment variables which are mounted via ConfigMaps.
+The applications will follow the [12 factor pattern](https://12factor.net/) which allows for configuration via environment variables which are mounted via ConfigMaps.
 
 <a name="the-management-account"></a>
 
 ### The Management Account Layer
+
+<img src="files/arch-Multi-Account.png">
 
 The management account hosts a dedicated VPC with an EKS cluster and a hosted VPN for access for internal tools that has network access to the other VPCs in the test, pre-prod, and production accounts.
 
@@ -131,19 +129,43 @@ Internal staff are able to connect over VPN into the internal ALB, which targets
 
 When a payment is submitted by a user, the Payments API validates the request and records the transaction in DynamoDB (`status = processing`) archiving the raw payload to S3 and triggering its processing using eventbridge.
 
-An `S3 -> SQS -> Lambda` pipeline then moves the work into background processing. The Lambda worker consumes messages from SQS, updates DynamoDB to mark the payment as complete, and then persists transactional data into RDS (with read replicas for scale and reporting), and indexes the transaction into OpenSearch for fast search and reporting.
+An `S3 -> SQS -> Lambda` pipeline then moves the work into background processing. The Lambda worker consumes messages from SQS, updates DynamoDB to mark the payment as complete, and then the payments service persists transactional data into RDS (with read replicas for scale and reporting), and indexes the transaction into OpenSearch for fast search and reporting.
 
 If the Lambda Function fails at any point, retry logic is built into the system so the message stays in the queue until re-processed. After max attempts it goes to a DLQ for later replay.
 
 SES also handles email notifications such as receipts or alerts when the process completes or fails.
 
+## Other Architectural Considerations
+
+### Isolation
+
+- Workloads have their own namespace to avoid sharing secrets and to allow for implementing simple network policies.
+- Workloads can utilize mTLS to ensure that both the client and server in the request agree on who they are sending/receiving data from.
+- RBAC permissions will be setup to limit the scope of service accounts, users, and applications.
+
+### Disaster recovery
+
+- All stateful datastores use AWS snapshots or AWS backup for DR
+- Kubernetes cluster state is defined in GitOps and stateless services can be restored into any new cluster.
+- All S3 Buckets replicate data to a replication bucket and versioning is enabled on all objects.
+
+### Redundancy
+
+- Pod anti affinities can be used to ensure that workloads are spread across multiple AZ’s.
+- Node groups and tolerations could be used to ensure that secure/unsecure workloads do not run on the same infrastructure.
+- Look at circuit breaking in service mesh (if in use) for resilience
+  https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
+- The production database will have a multi AZ setup with a replica to allow for redundancy or multi region if necessary.
+
 <a name="secrets-management-in-eks"></a>
 
 ## Secrets Management in EKS
 
-All secrets will be stored in repository using [SOPS](https://github.com/getsops/sops) using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
+All secrets will be stored in repository using [SOPS](https://github.com/getsops/sops) which encrypts the data using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
 
-The secrets, using terraform, are created in AWS Secrets Manager, that enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime. For added security the application could reach directly to SecretsManager to fetch secrets at runtime, which means they don’t need to be added to the applications container environment.
+The secrets being located in AWS Secrets Manager, enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime.
+
+For added security, the application could reach directly to Secrets Manager to fetch secrets at runtime, using and IRSA role and a service account. This pattern allows for applications secrets to be pulled into memory versus the applications container environment.
 
 <a name="the-deployment-process"></a>
 
@@ -217,7 +239,7 @@ jobs:
 
 Once approved and tested, PRs are queued to merge into main sequentially using a merge queue. Once the merge takes place a deploy occurs to the test environment and the PR env is spun down. Once the application is available smoke and E2E tests run.
 
-If dev tests pass, the build is promoted to pre-prod for smoke, E2E, and performance, and regression testing.
+If dev tests pass, the build is promoted to pre-prod for smoke, E2E, performance, and regression testing.
 
 Only after all tests pass and approved, the build is promoted to production. The deployment uses a canary strategy with automated rollback if analysis detects issues based upon specified metrics.
 
@@ -392,7 +414,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
 
   - **EKS**
     - Monitoring and alerting setup for all EKS clusters.
-    - Application logs exported.
+    - Application logs are exported to Datadog or similar like ELK.
     - K8s audit logging is enabled with alerts set for failed access to internal resources like secrets and logs.
     - Alerting on failed attempts of pod or service account creation.
     - Monitoring on node health and ready states.
@@ -406,17 +428,17 @@ To allow for confidence in all our integrated systems we need to make sure that 
   - **S3**
     - S3 access logs and eventbridge logging setup.
     - Policies in place for bucket visibility i.e public vs private buckets.
-    - Object lifecycle policies setup?
-    - Bucket objects KMS encrypted?
+    - Object lifecycle policies are setup.
+    - Bucket objects KMS encrypted.
   - **SQS**
     - Alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`
     - Alerts on thresholds for the Oldest message in the queue?
     - Monitoring and alerting on if messages are in the DLQ
   - **DynamoDB**
-    - Monitoring latency and and throttling events on read/write events?
+    - Monitoring latency and and throttling events on read/write events
   - **Lambda**
     - Forwarding lamda logs and invocation event logs.
-    - Monitoring and alerting setup for invocation errors and throttling?
+    - Monitoring and alerting setup for invocation errors and throttling.
     - Baseline alerts setup for lamdba execution durations.
 
 ### Deployment Infrastructure
@@ -424,3 +446,14 @@ To allow for confidence in all our integrated systems we need to make sure that 
 Throughout the CI/CD process observability should be baked into the build, release, and deployment lifecycles.
 
 #### Builds
+
+- If a build fails in CI/CD it should be blocking as a part of required repository checks.
+- Tests should also follow the same pattern
+- Failed build logs should be triaged for patterns if failures are persistant and prioritzed for fixes.
+
+#### Deployments
+
+- Github actions pipelines should alert the specific applications alert channel if the release process fails or if a deployment fails.
+- ArgoCD post syncs will alert to specific channels on success of deployments or sync failures.
+- If E2E tests, the applications alert channel should also be alerted
+- If an ArgoCD Rollout fails, that failure should also alert the requisite channels.
