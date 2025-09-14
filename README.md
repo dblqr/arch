@@ -81,7 +81,7 @@ The applications will follow the [12 factor pattern](https://12factor.net/) whic
 
 The management account hosts a dedicated VPC with an EKS cluster and a hosted VPN for access for internal tools that has network access to the other VPCs in the test, pre-prod, and production accounts.
 
-We run our instance ArgoCD from the management account and deploys are pushed out using the network access that the management account has. This gives us a single pane of glass as the management account produces deployments, while workload accounts’ clusters consume them. Clusters hold only read-only which allows promotion and policies to stay centralized.
+We run our instance ArgoCD from the management account and deploys are pushed out using the network access that the management account has. This gives us a single pane of glass as the management account produces deployments, while workload accounts’ clusters consume them.
 
 Cross-account IAM roles in each workload account will be used for delegated access, ensuring centralized governance and streamlined user lifecycle management across the organization.
 
@@ -215,7 +215,7 @@ When a build and release for the application takes place, the helm chart is vers
 
 From there, the CI/CD deployment process triggers an API call to ArgoCD to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the deployment process is in the merge queue.
 
-As apart of the deployment process we will also utilize pre/post hooks for certain actions like database migrations or running post scripts.
+As a part of the deployment process we will also utilize pre/post hooks for certain actions like database migrations or running post scripts.
 
 ## Canary Releases using ArgoCD Rollouts
 
