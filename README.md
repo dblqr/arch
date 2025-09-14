@@ -1,28 +1,8 @@
-<a name="infrastructure-design-scenario"></a>
-
 # **Infrastructure Design Scenario**
-
-- [Objectives](#objectives)
-- [The Applications](#the-applications)
-- [The Tools](#the-tools)
-- [AWS Accounts and Access Model](#aws-accounts-and-access-model)
-- [AWS Environments](#aws-environment-architecture)
-  - [Network Architecture](#network-architecture)
-  - [The Management Account](#the-management-account)
-- [Application Architecture](#application-architecture)
-- [Secrets Management in EKS](#secrets-management-in-eks)
-- [The Deployment Process](#the-deployment-process)
-- [Deployments With Helm Charts and ArgoCD](#deployments-with-helm-charts-and-argocd)
-- [Canary Releases using ArgoCD Rollouts](#canary-releases-using-argocd-rollouts)
-- [The Observability Layer](#the-observability-layer)
-
-<a name="objectives"></a>
 
 ## Objective
 
 _Define a repeatable consistent architecture for the facilitation of a production application as well as defining the necessary tooling and workflow processes for its successful deployment_
-
-<a name="the-applications"></a>
 
 ## The Applications
 
@@ -30,8 +10,6 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 - Varied architectures including a backend API, async handlers, a message bus, and background workers.
   - An assumption of the applications usage being a payments process as well as an email notification service to facilitate some of requirements around the varied architectures.
 - An Internal Admin tool only available to the support team.
-
-<a name="the-tools"></a>
 
 ## The Tools
 
@@ -45,11 +23,7 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 - **Argo Rollouts**
   - Used to facilitate canary deployments
 
-<a name="aws-accounts-and-access-model"></a>
-
 ## AWS Accounts and Access Model
-
-<img src="files/arch-Permissions Access.png">
 
 The environment will use four AWS accounts under a single AWS Organization:
 
@@ -65,13 +39,9 @@ This access model provides granular control of user onboarding and offboarding b
 
 From the Management Account, global governance is enforced using Service Control Policies (SCPs) and Resource Control Policies (RCPs) to apply baseline security and compliance standards consistently across all accounts.
 
-<a name="aws-account-layers"></a>
-
 ## AWS Account Layers
 
 A secure, multi-account AWS architecture with management and application accounts. The management account provides centralized identity, governance, and shared networking via Transit Gateway and VPN, while application accounts host EKS workloads, isolated load balancers, CloudFront distribution, and core managed services, all provisioned through Terraform.
-
-<a name="network-and-compute-layer"></a>
 
 ### Network and Compute Layer
 
@@ -105,8 +75,6 @@ Each application should, if necessary, have an IAM role + policy which makes sho
 
 The applications will follow the [12 factor pattern](https://12factor.net/) which allows for configuration via environment variables which are mounted via ConfigMaps.
 
-<a name="the-management-account"></a>
-
 ### The Management Account Layer
 
 <img src="files/arch-Multi-Account.png">
@@ -116,8 +84,6 @@ The management account hosts a dedicated VPC with an EKS cluster and a hosted VP
 We run our instance ArgoCD from the management account and deploys are pushed out using the network access that the management account has. This gives us a single pane of glass as the management account produces deployments, while workload accounts’ clusters consume them. Clusters hold only read-only which allows promotion and policies to stay centralized.
 
 Cross-account IAM roles in each workload account will be used for delegated access, ensuring centralized governance and streamlined user lifecycle management across the organization.
-
-<a name="application-architecture"></a>
 
 ## Application Architecture
 
@@ -157,8 +123,6 @@ SES also handles email notifications such as receipts or alerts when the process
   https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
 - The production database will have a multi AZ setup with a replica to allow for redundancy or multi region if necessary.
 
-<a name="secrets-management-in-eks"></a>
-
 ## Secrets Management in EKS
 
 All secrets will be stored in repository using [SOPS](https://github.com/getsops/sops) which encrypts the data using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
@@ -166,8 +130,6 @@ All secrets will be stored in repository using [SOPS](https://github.com/getsops
 The secrets being located in AWS Secrets Manager, enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime.
 
 For added security, the application could reach directly to Secrets Manager to fetch secrets at runtime, using and IRSA role and a service account. This pattern allows for applications secrets to be pulled into memory versus the applications container environment.
-
-<a name="the-deployment-process"></a>
 
 ## The Deployment Process
 
@@ -241,9 +203,7 @@ Once approved and tested, PRs are queued to merge into main sequentially using a
 
 If dev tests pass, the build is promoted to pre-prod for smoke, E2E, performance, and regression testing.
 
-Only after all tests pass and approved, the build is promoted to production. The deployment uses a canary strategy with automated rollback if analysis detects issues based upon specified metrics.
-
-<a name="deployments-with-helm-charts-and-argocd"></a>
+Only after all tests pass and approved, the build is promoted to production. The deployment uses a canary strategy with automated rollback if analysis detects issues based upon specified metrics.>
 
 ## Deployments With Helm Charts and ArgoCD
 
@@ -256,8 +216,6 @@ When a build and release for the application takes place, the helm chart is vers
 From there, the CI/CD deployment process triggers an API call to argocd to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the the deployment process is in the merge queue.
 
 As apart of the deployment process we will also utilize pre/post hooks for certain actions like database migrations or running post scripts.
-
-<a name="canary-releases-using-argocd-rollouts"></a>
 
 ## Canary Releases using ArgoCD Rollouts
 
@@ -361,8 +319,6 @@ spec:
                 args: ["-sfS", "http://app-canary.prod.svc/healthz"]
 ```
 
-<a name="the-observability-layer"></a>
-
 ## The Observability Layer
 
 Throughout the entire application release process, as well as at an AWS account and infrastructure level, observability, monitoring and alerting are baked into the release lifecycle.
@@ -373,13 +329,13 @@ Throughout the entire application release process, as well as at an AWS account 
 
 Throughout the applications lifecycle we want to monitor for specific KPI's, for example:
 
-- Latency
+- **Latency**
   - How long requests take.
-- Error rate
+- **Error rate**
   - How often they fail.
-- Throughput
+- **Throughput**
   - How many requests are processed.
-- Saturation
+- **Saturation**
   - How close the system is to resource limits.
 
 These metrics be collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visulization tools like Grafana.
@@ -408,7 +364,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
 
   - WAF setup at network access layers.
   - VPC flow logs enabled and monitored.
-  - Forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts
+  - Forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts.
 
 - **AWS Infrastructure**
 
@@ -431,11 +387,11 @@ To allow for confidence in all our integrated systems we need to make sure that 
     - Object lifecycle policies are setup.
     - Bucket objects KMS encrypted.
   - **SQS**
-    - Alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`
-    - Alerts on thresholds for the Oldest message in the queue?
-    - Monitoring and alerting on if messages are in the DLQ
+    - Alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`.
+    - Alerts on thresholds for the Oldest message in the queue.
+    - Monitoring and alerting on if messages are in the DLQ.
   - **DynamoDB**
-    - Monitoring latency and and throttling events on read/write events
+    - Monitoring latency and and throttling events on read/write events.
   - **Lambda**
     - Forwarding lamda logs and invocation event logs.
     - Monitoring and alerting setup for invocation errors and throttling.
@@ -448,12 +404,12 @@ Throughout the CI/CD process observability should be baked into the build, relea
 #### Builds
 
 - If a build fails in CI/CD it should be blocking as a part of required repository checks.
-- Tests should also follow the same pattern
+- Tests should also follow the same pattern.
 - Failed build logs should be triaged for patterns if failures are persistant and prioritzed for fixes.
 
 #### Deployments
 
 - Github actions pipelines should alert the specific applications alert channel if the release process fails or if a deployment fails.
 - ArgoCD post syncs will alert to specific channels on success of deployments or sync failures.
-- If E2E tests, the applications alert channel should also be alerted
+- If E2E tests fail the applications alert channel should also be alerted.
 - If an ArgoCD Rollout fails, that failure should also alert the requisite channels.
