@@ -8,7 +8,7 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 
 - A front-end application
 - Varied architectures including a backend API, async handlers, a message bus, and background workers.
-  - An assumption of the application's usage being a payments process as well as an email notification service to facilitate some of requirements around the varied architectures.
+  - An assumption of the application's usage being a payments process as well as an email notification service to facilitate some of the requirements around the varied architectures.
 - An Internal Admin tool only available to the support team.
 
 ## The Tools
@@ -107,7 +107,7 @@ SES also handles email notifications such as receipts or alerts when the process
 
 - Workloads have their own namespace to avoid sharing secrets and to allow for implementing simple network policies.
 - Workloads can utilize mTLS to ensure that both the client and server in the request agree on who they are sending/receiving data from.
-- RBAC permissions will be setup to limit the scope of service accounts, users, and applications.
+- RBAC permissions will be set up to limit the scope of service accounts, users, and applications.
 
 ### Disaster recovery
 
@@ -121,7 +121,7 @@ SES also handles email notifications such as receipts or alerts when the process
 - Node groups and tolerations could be used to ensure that secure/unsecure workloads do not run on the same infrastructure.
 - Look at circuit breaking in service mesh (if in use) for resilience
   https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
-- The production database will have a multi AZ setup with a replica to allow for redundancy or multi region if necessary.
+- The production database will have a multi AZ set up with a replica to allow for redundancy or multi region if necessary.
 
 ## Secrets Management in EKS
 
@@ -129,7 +129,7 @@ All secrets will be stored in repository using [SOPS](https://github.com/getsops
 
 The secrets being located in AWS Secrets Manager, enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime.
 
-For added security, the application could reach directly to Secrets Manager to fetch secrets at runtime, using and IRSA role and a service account. This pattern allows for applications secrets to be pulled into memory versus the applications container environment.
+For added security, the application could reach directly to Secrets Manager to fetch secrets at runtime, using an IRSA role and a service account. This pattern allows for applications secrets to be pulled into memory versus the applications container environment.
 
 ## The Deployment Process
 
@@ -139,7 +139,7 @@ For added security, the application could reach directly to Secrets Manager to f
 
 For local development, the developers have the ability to run the application stack locally either using docker or docker compose. Unit and functional tests can run locally against the application.
 
-When a PR is created, a temporary environment spins up with app dependencies and infra dependencies, running integration and E2E tests against that created environment. This allows developers to ability to integrate with other services like the full run of Payments API process without touching upper environments.
+When a PR is created, a temporary environment spins up with app dependencies and infra dependencies, running integration and E2E tests against that created environment. This allows developers the ability to integrate with other services like the full run of Payments API process without touching upper environments.
 
 The application on every PR and commit, a build pipeline will run making sure that the docker image builds successfully
 
@@ -213,7 +213,7 @@ To facilitate the deployment of the application we are utilizing application hel
 
 When a build and release for the application takes place, the helm chart is versioned and released and pushed up to a chart repository (ECR in the example). This allows use to promote the same artifact through the entire CI/CD pipeline.
 
-From there, the CI/CD deployment process triggers an API call to argocd to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the the deployment process is in the merge queue.
+From there, the CI/CD deployment process triggers an API call to ArgoCD to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the deployment process is in the merge queue.
 
 As apart of the deployment process we will also utilize pre/post hooks for certain actions like database migrations or running post scripts.
 
@@ -338,7 +338,7 @@ Throughout the applications lifecycle we want to monitor for specific KPI's, for
 - **Saturation**
   - How close the system is to resource limits.
 
-These metrics be collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visualization tools like Grafana.
+These metrics are collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visualization tools like Grafana.
 
 #### Application Logs
 
@@ -350,7 +350,7 @@ As an example, we _should_ alert on if there is increased latency in the applica
 
 ### Infrastructure Monitoring and Observability
 
-To allow for confidence in all our integrated systems we need to make sure that for all of our different types of shared infrastructure we have valid and actionable monitoring and alerting to go to the right teams and owners that can action upon them.
+To allow for confidence in all our integrated systems we need to make sure that for all of our different types of shared infrastructure we have valid and actionable monitoring and alerting to go to the right teams and owners that can take action upon them.
 
 - **Access logging**
 
@@ -384,18 +384,18 @@ To allow for confidence in all our integrated systems we need to make sure that 
   - **S3**
     - S3 access logs and eventbridge logging setup.
     - Policies in place for bucket visibility i.e public vs private buckets.
-    - Object lifecycle policies are setup.
+    - Object lifecycle policies are set up.
     - Bucket objects KMS encrypted.
   - **SQS**
-    - Alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`.
+    - Alerts set up for Queue length i.e `ApproximateNumberOfMessagesVisible`.
     - Alerts on thresholds for the Oldest message in the queue.
     - Monitoring and alerting on if messages are in the DLQ.
   - **DynamoDB**
-    - Monitoring latency and and throttling events on read/write events.
+    - Monitoring latency and throttling events on read/write events.
   - **Lambda**
     - Forwarding Lambda logs and invocation event logs.
-    - Monitoring and alerting setup for invocation errors and throttling.
-    - Baseline alerts setup for Lamdba execution durations.
+    - Monitoring and alerting set up for invocation errors and throttling.
+    - Baseline alerts set up for Lambda execution durations.
 
 ### Deployment Infrastructure
 
@@ -403,13 +403,13 @@ Throughout the CI/CD process observability should be baked into the build, relea
 
 #### Builds
 
-- If a build fails in CI/CD it should be blocking as a part of required repository checks.
+- If a build fails in CI/CD it should be blocked as a part of required repository checks.
 - Tests should also follow the same pattern.
 - Failed build logs should be triaged for patterns if failures are persistent and prioritized for fixes.
 
 #### Deployments
 
 - Github actions pipelines should alert the specific applications alert channel if the release process fails or if a deployment fails.
-- ArgoCD post syncs will alert to specific channels on success of deployments or sync failures.
+- ArgoCD post syncs will alert specific channels on success of deployments or sync failures.
 - If E2E tests fail the applications alert channel should also be alerted.
 - If an ArgoCD Rollout fails, that failure should also alert the requisite channels.
