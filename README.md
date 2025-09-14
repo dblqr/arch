@@ -2,8 +2,8 @@
 
 # **Infrastructure Design Scenario**
 
-- [Objectives:](#objectives)
-- [The Applications:](#the-applications)
+- [Objectives](#objectives)
+- [The Applications](#the-applications)
 - [The Tools](#the-tools)
 - [AWS Accounts and Access Model](#aws-accounts-and-access-model)
 - [AWS Environment Architecture](#aws-environment-architecture)
