@@ -343,6 +343,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
   - Are VPC flow logs enabled and monitored?
   - Are we forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts?
 - **AWS Infrastructure**
+
   - **EKS**
     - Do we have monitoring and alerting setup for our EKS clusters?
     - Application logs monitoring and alerting created?
@@ -370,4 +371,69 @@ To allow for confidence in all our integrated systems we need to make sure that 
     - Are we forwarding logs and event logs?
     - Is monitoring and alerting setup for invocation errors and throttling?
     - Do we have baseline alerts setup for lamdba execution durations?
+
   ### Deployment Infrastructure
+
+Throughout the CI/CD process observability should be baked into the build, release, and deployment lifecycles.
+
+#### Builds
+
+The application on every PR and commit, a build pipeline will run making sure that the docker image builds successfully
+
+Example:
+
+```yaml
+name: build
+on:
+  pull_request:
+    paths:
+      - "src/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  METRICS_SERVER_REPO_NAME: "us-east1-docker.pkg.dev/flask-app-469608/metrics-server/metrics-server"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # ratchet:actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # ratchet:google-github-actions/auth@v3
+        with:
+          token_format: access_token
+          workload_identity_provider: "projects/12345678910/locations/global/workloadIdentityPools/github-com/providers/github-com-oidc"
+          service_account: "app-repo@app-repo.iam.gserviceaccount.com"
+
+      - name: Login to GAR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # ratchet:docker/login-action@v3
+        with:
+          registry: us-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # ratchet:docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # ratchet:docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # ratchet:docker/build-push-action@v6
+        with:
+          push: false
+          context: src/app
+          cache-from: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache,mode=max
+```
