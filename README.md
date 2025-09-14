@@ -344,7 +344,7 @@ These metrics are collected from many sources across the stack like EKS, ALBs, R
 
 We would be collecting and aggregating application logs from many different sources like application logs/container logs from EKS, load balancer logs from the ALBS or K8s Ingresses, or CloudFront logs centralized via CloudWatch Logs or a log pipeline to Datadog or similar.
 
-Alerts and monitors should be setup for actionable remediation alongside runbooks versus causing alert fatigue.
+Alerts and monitors should be set up for actionable remediation alongside runbooks versus causing alert fatigue.
 
 As an example, we _should_ alert on if there is increased latency in the application or if we have an anomalous increase in 5XX errors.
 
@@ -362,14 +362,14 @@ To allow for confidence in all our integrated systems we need to make sure that 
 
 - **Network monitoring**
 
-  - WAF setup at network access layers.
+  - WAF set up at network access layers.
   - VPC flow logs enabled and monitored.
   - Forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts.
 
 - **AWS Infrastructure**
 
   - **EKS**
-    - Monitoring and alerting setup for all EKS clusters.
+    - Monitoring and alerting set up for all EKS clusters.
     - Application logs are exported to Datadog or similar like ELK.
     - K8s audit logging is enabled with alerts set for failed access to internal resources like secrets and logs.
     - Alerting on failed attempts of pod or service account creation.
@@ -382,7 +382,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
     - Alerting on replication lag.
     - Alerts and monitors for max connections and long running queries.
   - **S3**
-    - S3 access logs and eventbridge logging setup.
+    - S3 access logs and eventbridge logging set up.
     - Policies in place for bucket visibility i.e public vs private buckets.
     - Object lifecycle policies are set up.
     - Bucket objects KMS encrypted.
