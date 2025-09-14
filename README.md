@@ -6,8 +6,8 @@
 - [The Applications](#the-applications)
 - [The Tools](#the-tools)
 - [AWS Accounts and Access Model](#aws-accounts-and-access-model)
-- [AWS Environment Architecture](#aws-environment-architecture)
-  - [Application Environments](#application-environments)
+- [AWS Environments](#aws-environment-architecture)
+  - [Network Architecture](#network-architecture)
   - [The Management Account](#the-management-account)
 - [Application Architecture](#application-architecture)
 - [Secrets Management in EKS](#secrets-management-in-eks)
@@ -63,47 +63,59 @@ This access model provides granular control of user onboarding and offboarding b
 
 From the Management Account, global governance is enforced using Service Control Policies (SCPs) and Resource Control Policies (RCPs) to apply baseline security and compliance standards consistently across all accounts.
 
-<a name="aws-environment-architecture"></a>
+<a name="aws-account-layers"></a>
 
-## AWS Environment
+## AWS Account Layers
 
 A secure, multi-account AWS architecture with management and application accounts. The management account provides centralized identity, governance, and shared networking via Transit Gateway and VPN, while application accounts host EKS workloads, isolated load balancers, CloudFront distribution, and core managed services, all provisioned through Terraform.
 
-<a name="application-environments"></a>
+<a name="network-and-compute-layer"></a>
 
-### Application Environments
+### Network and Compute Layer
 
-<img src="files/arch-Architecture.png">
+<img src="files/arch-Network-Architecture.png">
 
-The proposed solution is as follows:
+A VPC with three public and private subnets distributed across multiple Availability Zones.
 
-- A VPC with three public and private subnets distributed across multiple Availability Zones.
+External Load Balancer in front of the public subnets for internet-facing services, and Internal Load Balancer in front of the private subnets for internal-only access.
 
-- External Load Balancer in front of the public subnets for internet-facing services, and Internal Load Balancer in front of the private subnets for internal-only access.
+An EKS cluster deployed only in the private subnets.
 
-- An EKS cluster deployed only in the private subnets.
+CloudFront is used to expose both internal and external applications, providing TLS termination, caching, and global edge distribution for frontend traffic.
 
-- CloudFront used to expose both internal and external applications, providing TLS termination, caching, and global edge distribution for frontend traffic.
+Internal access to applications behind the internal load balancer provided through a VPN (e.g., Tailscale) that connects via a Transit Gateway from the management account.
 
-- Internal access to applications behind the internal load balancer provided through a VPN (e.g., Tailscale) that connects via a Transit Gateway from the management account.
+A dedicated NAT Gateway per AZ to avoid the single point of failure created by a shared NAT Gateway across all AZs.
 
-- A dedicated NAT Gateway per AZ to avoid the single point of failure created by a shared NAT Gateway across all AZs.
+Core managed services: S3, DynamoDB, SQS, OpenSearch, and RDS integrated with the web app and Payments API for persistence, messaging, indexing, and relational workloads.
 
-- Core managed services: S3, DynamoDB, SQS, OpenSearch, and RDS integrated with the web app and Payments API for persistence, messaging, indexing, and relational workloads.
+All services run in private subnets across three Availability Zones. The NAT Gateways provide controlled outbound internet access for EKS nodes and workloads, while VPC Interface Endpoints enable private connectivity to AWS APIs. This design ensures internet-facing services remain isolated and internal systems communicate securely.
 
-- All services run in private subnets across three Availability Zones. The NAT Gateways provide controlled outbound internet access for EKS nodes and workloads, while VPC Interface Endpoints enable private connectivity to AWS APIs. This design ensures internet-facing services remain isolated and internal systems communicate securely.
+The base AWS account infrastructure is created in terraform and is hosted in a repository that is responsible for the deployment of the shared infrastructure as well as the payments application infrastructure.
 
-- The base AWS account infrastructure is created in terraform and is hosted in a repository that is responsible for the deployment of the shared infrastructure as well as the payments application infrastructure.
+### Application Layer
 
-- The Payments application infrastructure is created in terraform and lives within the applications repo and is treated as an artifact just like the application that is applied in the infrastructure repository.
+<img src="files/Kubernetes-Traffic.png">
+
+External users access the system through CloudFront which acts as a CDN serving static assets from S3 and routes dynamic requests to the public ALB.
+
+All traffic goes through an ALB which forwards to an HTTP gateway exposed via an ingress controller in EKS on port 443. External users come through the public internet facing ALB. Internal users go through an internal ALB which is routable through a VPN.
+
+Note that although the diagram does not show multiple instances, each deployment should contain multiple replicas spread out across multiple AZ’s with podAntiAffinity.
+
+All applications running in EKS must have a readiness and liveness check to allow for self healing in the event of an application error.
+
+Each application should have an IAM role + policy which makes short lived AWS credentials available to pods utilizing the AWS SDK.
+
+Our applications follow the 12 factor pattern which allows for configuration via environment variables which are mounted via ConfigMaps.
 
 <a name="the-management-account"></a>
 
-### The Management Account
+### The Management Account Layer
 
-<img src="files/arch-Management.png">
+The management account hosts a dedicated VPC with an EKS cluster and a hosted VPN for access for internal tools that has network access to the other VPCs in the test, pre-prod, and production accounts.
 
-The management account hosts core shared infrastructure, including IAM Identity Center for centralized authentication and permission set management, a dedicated VPC with an EKS cluster and a hosted VPN for access for internal tools using a Transit Gateway to provide secure connectivity to VPCs in the test, pre-prod, and production accounts.
+We run our instance ArgoCD from the management account and deploys are pushed out using the network access that the management account has. This gives us a single pane of glass as the management account produces deployments, while workload accounts’ clusters consume them. Clusters hold only read-only which allows promotion and policies to stay centralized.
 
 Cross-account IAM roles in each workload account will be used for delegated access, ensuring centralized governance and streamlined user lifecycle management across the organization.
 
@@ -129,36 +141,9 @@ SES also handles email notifications such as receipts or alerts when the process
 
 ## Secrets Management in EKS
 
-<img src="files/arch-Secrets Management.png">
+All secrets will be stored in repository using [SOPS](https://github.com/getsops/sops) using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
 
-All secrets will be stored in repository using [SOPS](https://github.com/getsops/sops) using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and then added to secrets manager or parameter store. Only Admin accounts will be able to decrypt and add SOPS secrets for production.
-
-The [External Secrets Operator](https://external-secrets.io/latest/provider/aws-secrets-manager/) connects Kubernetes to AWS Secrets Manager or SSM Parameter Store through IAM Roles for Service Accounts (IRSA).
-
-A ClusterSecretStore resource defines the provider to use, in our case Secrets Manager. ExternalSecret resources specify which secrets to fetch. The operator retrieves the values securely using an IAM role and syncs them into Kubernetes Secrets.
-
-```yaml
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: aws-secretsmanager
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      role: arn:aws:iam::123456789012:role/application-external-secrets # limits the scope of what secrets this resource can access
-      region: us-east-1
-      auth:
-        secretRef:
-          databaseSecretRef:
-            name: database-secret
-            key: database-key
-          apiSecretRef:
-            name: api-secret
-            key: api-key
-```
-
-The benefit is that applications consume these secrets through environment variables or mounted volumes without needing direct AWS credentials. Whenever the underlying secret is updated in AWS, the operator automatically refreshes the Kubernetes Secret on its configured sync interval, This ensures applications always are using the latest secret version while keeping sensitive data managed centrally in AWS.
+The secrets, using terraform, are created in AWS Secrets Manager, that enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime. For added security the application could reach directly to SecretsManager to fetch secrets at runtime, which means they don’t need to be added to the applications container environment.
 
 <a name="the-deployment-process"></a>
 
@@ -171,6 +156,64 @@ The benefit is that applications consume these secrets through environment varia
 For local development, the developers have the ability to run the application stack locally either using docker or docker compose. Unit and functional tests can run locally against the application.
 
 When a PR is created, a temporary environment spins up with app dependencies and infra dependencies, running integration and E2E tests against that created environment. This allows developers to ability to integrate with other services like the full run of Payments API process without touching upper environments.
+
+The application on every PR and commit, a build pipeline will run making sure that the docker image builds successfully
+
+```yaml
+name: build
+on:
+  pull_request:
+    paths:
+      - "src/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_REPO_NAME: "us-east1-docker.pkg.dev/app-12345/app/app"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # ratchet:actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # ratchet:google-github-actions/auth@v3
+        with:
+          token_format: access_token
+          workload_identity_provider: "projects/12345678910/locations/global/workloadIdentityPools/github-com/providers/github-com-oidc"
+          service_account: "app-repo@app-repo.iam.gserviceaccount.com"
+
+      - name: Login to GAR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # ratchet:docker/login-action@v3
+        with:
+          registry: us-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # ratchet:docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # ratchet:docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # ratchet:docker/build-push-action@v6
+        with:
+          push: false
+          context: src/app
+          cache-from: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache,mode=max
+```
 
 Once approved and tested, PRs are queued to merge into main sequentially using a merge queue. Once the merge takes place a deploy occurs to the test environment and the PR env is spun down. Once the application is available smoke and E2E tests run.
 
@@ -186,9 +229,11 @@ Only after all tests pass and approved, the build is promoted to production. The
 
 To facilitate the deployment of the application we are utilizing application helm charts which live alongside the application and are also treated as a versioned artifact.
 
-When a build and release for the application takes place, the helm chart is versioned and released and pushed up to a chart repository (ECR in the example).
+When a build and release for the application takes place, the helm chart is versioned and released and pushed up to a chart repository (ECR in the example). This allows use to promote the same artifact through the entire CI/CD pipeline.
 
 From there, the CI/CD deployment process triggers an API call to argocd to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the the deployment process is in the merge queue.
+
+As apart of the deployment process we will also utilize pre/post hooks for certain actions like database migrations or running post scripts.
 
 <a name="canary-releases-using-argocd-rollouts"></a>
 
@@ -300,7 +345,7 @@ spec:
 
 Throughout the entire application release process, as well as at an AWS account and infrastructure level, observability, monitoring and alerting are baked into the release lifecycle.
 
-### Application Logging, Monitoring, and Tracing
+### Application Logging and Monitoring
 
 #### Application Monitoring
 
@@ -325,115 +370,57 @@ Alerts and monitors should be setup for actionable remediation alongside runbook
 
 As an example, we _should_ alert on if there is increased latency in the application or if we have an anomalous increase in 5XX errors.
 
-#### Application Traces
-
-We should have the ability to trace a request from the user to the completion or failure of a users request. We could utilize Datadog APM to track tags and requests as it travels throughout the stack #TODO:
-
-### Infrastructure
+### Infrastructure Monitoring and Observability
 
 To allow for confidence in all our integrated systems we need to make sure that for all of our different types of shared infrastructure we have valid and actionable monitoring and alerting to go to the right teams and owners that can action upon them.
 
 - **Access logging**
-  - Are we monitoring IAM Identity center logins?
-  - Is GuardDuty enabled in all environments for intrusion detection?
-  - Are we alerting on failed AWS API attempts?
-  - Is root AWS user activity monitored? Is 2FA enabled for the root user?
+
+  - Actively monitoring IAM Identity center logins.
+  - GuardDuty or a cloud SIEM of your chioce is enabled in all environments for intrusion detection.
+  - Alerting on failed AWS API attempts.
+  - Root AWS user activity monitored and not in use.
+  - 2FA enabled for the root user.
+
 - **Network monitoring**
-  - Is a WAF setup at access layers?
-  - Are VPC flow logs enabled and monitored?
-  - Are we forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts?
+
+  - WAF setup at network access layers.
+  - VPC flow logs enabled and monitored.
+  - Forwarding Cloudfront logs and monitoring for increases in errors or failed access attempts
+
 - **AWS Infrastructure**
 
   - **EKS**
-    - Do we have monitoring and alerting setup for our EKS clusters?
-    - Application logs monitoring and alerting created?
-    - K8s audit logging enabled? Do we have alerts set for failed access to internal resources like secrets or logs? Failed attempts of pod or service account creation?
-    - Monitoring on node health and ready states?
-    - Pod scheduling failures?
-    - Alerting on application and shared resource pressure (CPU, memory, disk)?
+    - Monitoring and alerting setup for all EKS clusters.
+    - Application logs exported.
+    - K8s audit logging is enabled with alerts set for failed access to internal resources like secrets and logs.
+    - Alerting on failed attempts of pod or service account creation.
+    - Monitoring on node health and ready states.
+    - Pod scheduling failures.
+    - Monitoring on application and shared resource pressure (CPU, memory, disk).
   - **RDS instances**
-    - RDS Instance monitoring and alerting for CPU and Memory utilization?
-    - Is storage autoscaling enabled for our RDS instances? Do we have monitors for these events?
-    - Alerting on replication lag?
-    - Do we have alerts for max connections and long running queries?
+    - RDS Instance monitoring and alerting for CPU and Memory utilization.
+    - Is storage autoscaling enabled for our RDS instances with monitors for these events.
+    - Alerting on replication lag.
+    - Alerts and monitors for max connections and long running queries.
   - **S3**
-    - Do we have S3 access logs and eventbridge logging setup?
-    - Do we have policies in place for bucket visibility?
-    - Are lifecycle policies setup?
-    - Are bucket objects KMS encrypted?
+    - S3 access logs and eventbridge logging setup.
+    - Policies in place for bucket visibility i.e public vs private buckets.
+    - Object lifecycle policies setup?
+    - Bucket objects KMS encrypted?
   - **SQS**
-    - Do we have alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`
-    - Do we alert on thresholds for the Oldest message in the queue?
-    - Monitoring and alerting on if messages are in the DLQ?
+    - Alerts setup for Queue length i.e `ApproximateNumberOfMessagesVisible`
+    - Alerts on thresholds for the Oldest message in the queue?
+    - Monitoring and alerting on if messages are in the DLQ
   - **DynamoDB**
-    - Are we monitoring latency and and throttling events on read/write events?
+    - Monitoring latency and and throttling events on read/write events?
   - **Lambda**
-    - Are we forwarding logs and event logs?
-    - Is monitoring and alerting setup for invocation errors and throttling?
-    - Do we have baseline alerts setup for lamdba execution durations?
+    - Forwarding lamda logs and invocation event logs.
+    - Monitoring and alerting setup for invocation errors and throttling?
+    - Baseline alerts setup for lamdba execution durations.
 
-  ### Deployment Infrastructure
+### Deployment Infrastructure
 
 Throughout the CI/CD process observability should be baked into the build, release, and deployment lifecycles.
 
 #### Builds
-
-The application on every PR and commit, a build pipeline will run making sure that the docker image builds successfully
-
-Example:
-
-```yaml
-name: build
-on:
-  pull_request:
-    paths:
-      - "src/**"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  METRICS_SERVER_REPO_NAME: "us-east1-docker.pkg.dev/flask-app-469608/metrics-server/metrics-server"
-
-permissions:
-  contents: read
-  id-token: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # ratchet:actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # ratchet:google-github-actions/auth@v3
-        with:
-          token_format: access_token
-          workload_identity_provider: "projects/12345678910/locations/global/workloadIdentityPools/github-com/providers/github-com-oidc"
-          service_account: "app-repo@app-repo.iam.gserviceaccount.com"
-
-      - name: Login to GAR
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # ratchet:docker/login-action@v3
-        with:
-          registry: us-east1-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # ratchet:docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # ratchet:docker/setup-buildx-action@v3
-
-      - name: Build and push
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # ratchet:docker/build-push-action@v6
-        with:
-          push: false
-          context: src/app
-          cache-from: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache,mode=max
-```
