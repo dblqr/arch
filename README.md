@@ -20,7 +20,7 @@
 
 ## Objective
 
-_Define a repeatable consistant architecture for the facilitation of a production application as well as defining the neccessary tooling and workflow processes for its successful deployment_
+_Define a repeatable consistent architecture for the facilitation of a production application as well as defining the necessary tooling and workflow processes for its successful deployment_
 
 <a name="the-applications"></a>
 
@@ -93,7 +93,7 @@ The proposed solution is as follows:
 
 - All services run in private subnets across three Availability Zones. The NAT Gateways provide controlled outbound internet access for EKS nodes and workloads, while VPC Interface Endpoints enable private connectivity to AWS APIs. This design ensures internet-facing services remain isolated and internal systems communicate securely.
 
-- The base AWS account infrastructure is created in terraform and is hosted in a repository that is responsible for the deployment of the shared infrastructre as well as the payments application infrastructure.
+- The base AWS account infrastructure is created in terraform and is hosted in a repository that is responsible for the deployment of the shared infrastructure as well as the payments application infrastructure.
 
 - The Payments application infrastructure is created in terraform and lives within the applications repo and is treated as an artifact just like the application that is applied in the infrastructure repository.
 
@@ -165,7 +165,7 @@ Only after all tests pass and approved, the build is promoted to production. The
 
 <center><img src="files/arch-ArgoCD.png"></center>
 
-To faclitate the deployment of the application we are utilizing application helm charts which live alongside the application and are also treated as a versioned and released object.
+To facilitate the deployment of the application we are utilizing application helm charts which live alongside the application and are also treated as a versioned and released object.
 
 When a build and release for the application takes place, the helm chart is versioned and released as well and pushed up to a chart repository (either ECR or Chart Museum, ECR in my examples).
 
@@ -205,7 +205,7 @@ spec:
             sum:trace.http.requests{service:app,env:prod}.rollup(sum)
 ```
 
-By using the Datadog provider we can monitor the application to only be deployed if that release is fufilling the contract set by latency as well as making sure that error rates are within manageable limits before promoting.
+By using the Datadog provider we can monitor the application to only be deployed if that release is fulfilling the contract set by latency as well as making sure that error rates are within manageable limits before promoting.
 
 Rollouts can also be expanded to smoke testing for usage in lower environments vs using post sync hooks.
 
