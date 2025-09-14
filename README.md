@@ -8,7 +8,7 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 
 - A front-end application
 - Varied architectures including a backend API, async handlers, a message bus, and background workers.
-  - An assumption of the applications usage being a payments process as well as an email notification service to facilitate some of requirements around the varied architectures.
+  - An assumption of the application's usage being a payments process as well as an email notification service to facilitate some of requirements around the varied architectures.
 - An Internal Admin tool only available to the support team.
 
 ## The Tools
@@ -45,7 +45,7 @@ A secure, multi-account AWS architecture with management and application account
 
 ### Network and Compute Layer
 
-<img src="files/arch-Network-Architecture.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/arch-Network-Architecture.png?raw=true">
 
 - A VPC with three public and private subnets distributed across multiple Availability Zones.
 - An External Load Balancer in front of the public subnets for internet-facing services, and Internal Load Balancer in front of the private subnets for internal-only access.
@@ -61,7 +61,7 @@ The base AWS account infrastructure is created in terraform and is hosted in a r
 
 ### Application Layer
 
-<img src="files/Kubernetes-Traffic.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/Kubernetes-Traffic.png?raw=true">
 
 External users access the system through CloudFront which acts as a CDN serving static assets from S3 and routes dynamic requests to the public ALB.
 
@@ -77,7 +77,7 @@ The applications will follow the [12 factor pattern](https://12factor.net/) whic
 
 ### The Management Account Layer
 
-<img src="files/arch-Multi-Account.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/arch-Multi-Account.png?raw=true">
 
 The management account hosts a dedicated VPC with an EKS cluster and a hosted VPN for access for internal tools that has network access to the other VPCs in the test, pre-prod, and production accounts.
 
@@ -87,7 +87,7 @@ Cross-account IAM roles in each workload account will be used for delegated acce
 
 ## Application Architecture
 
-<img src="files/arch-Application.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/arch-Application.png?raw=true">
 
 External users access the system through CloudFront, which serves static frontend assets from S3 and routes dynamic requests to the public ALB. Traffic is then forwarded to the EKS cluster via the public ingress controller, where the Payments Web and Payments API services run.
 
@@ -135,7 +135,7 @@ For added security, the application could reach directly to Secrets Manager to f
 
 **<center>_Build -> Test -> Deploy -> Observe -> Promote_</center>**
 
-<img src="files/arch-CI_CD Process.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/arch-CI_CD Process.png?raw=true">
 
 For local development, the developers have the ability to run the application stack locally either using docker or docker compose. Unit and functional tests can run locally against the application.
 
@@ -207,7 +207,7 @@ Only after all tests pass and approved, the build is promoted to production. The
 
 ## Deployments With Helm Charts and ArgoCD
 
-<img src="files/arch-ArgoCD.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/arch-ArgoCD.png?raw=true">
 
 To facilitate the deployment of the application we are utilizing application helm charts which live alongside the application and are also treated as a versioned artifact.
 
@@ -219,7 +219,7 @@ As apart of the deployment process we will also utilize pre/post hooks for certa
 
 ## Canary Releases using ArgoCD Rollouts
 
-<img src="files/arch-ArgoCD Rollout.png">
+<img src="https://github.com/dblqr/arch/blob/main/files/arch-ArgoCD Rollout.png?raw=true">
 
 To facilitate a canary release with rollbacks in Production or other environments we will utilize ArgoCD Rollouts. Due to the usage of ArgoCD for our deployment mechanism, using rollouts is a logical next step to expand the functionality of `release -> deploy -> observe` to expand the base functionality of ArgoCD and Kubernetes ability to repair and keep applications healthy.
 
@@ -338,11 +338,11 @@ Throughout the applications lifecycle we want to monitor for specific KPI's, for
 - **Saturation**
   - How close the system is to resource limits.
 
-These metrics be collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visulization tools like Grafana.
+These metrics be collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visualization tools like Grafana.
 
 #### Application Logs
 
-We would be collecting and aggregating application logs from from many different sources like application logs/container logs from EKS, load balancer logs from the ALBS or K8s Ingresses, or CloudFront logs centralized via CloudWatch Logs or a log pipeline to Datadog or similar.
+We would be collecting and aggregating application logs from many different sources like application logs/container logs from EKS, load balancer logs from the ALBS or K8s Ingresses, or CloudFront logs centralized via CloudWatch Logs or a log pipeline to Datadog or similar.
 
 Alerts and monitors should be setup for actionable remediation alongside runbooks versus causing alert fatigue.
 
@@ -355,7 +355,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
 - **Access logging**
 
   - Actively monitoring IAM Identity center logins.
-  - GuardDuty or a cloud SIEM of your chioce is enabled in all environments for intrusion detection.
+  - GuardDuty or a cloud SIEM of your choice is enabled in all environments for intrusion detection.
   - Alerting on failed AWS API attempts.
   - Root AWS user activity monitored and not in use.
   - 2FA enabled for the root user.
@@ -393,9 +393,9 @@ To allow for confidence in all our integrated systems we need to make sure that 
   - **DynamoDB**
     - Monitoring latency and and throttling events on read/write events.
   - **Lambda**
-    - Forwarding lamda logs and invocation event logs.
+    - Forwarding Lambda logs and invocation event logs.
     - Monitoring and alerting setup for invocation errors and throttling.
-    - Baseline alerts setup for lamdba execution durations.
+    - Baseline alerts setup for Lamdba execution durations.
 
 ### Deployment Infrastructure
 
@@ -405,7 +405,7 @@ Throughout the CI/CD process observability should be baked into the build, relea
 
 - If a build fails in CI/CD it should be blocking as a part of required repository checks.
 - Tests should also follow the same pattern.
-- Failed build logs should be triaged for patterns if failures are persistant and prioritzed for fixes.
+- Failed build logs should be triaged for patterns if failures are persistent and prioritized for fixes.
 
 #### Deployments
 
