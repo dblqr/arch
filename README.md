@@ -37,7 +37,7 @@ The environment will use four AWS accounts under a single AWS Organization:
 
 This access model provides granular control of user onboarding and offboarding by integrating with IAM Identity Center (AWS SSO) or external identity providers such as Okta. Permission sets can be centrally defined and assigned per account, reducing operational overhead while maintaining strict boundaries.
 
-From the Management Account, global governance is enforced using Service Control Policies (SCPs) and Resource Control Policies (RCPs) to apply baseline security and compliance standards consistently across all accounts.
+From the Management Account, global governance is enforced using Service Control Policies (SCPs) to apply baseline security and compliance standards consistently across all accounts.
 
 ## AWS Account Layers
 
