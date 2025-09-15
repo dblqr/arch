@@ -83,8 +83,6 @@ The management account hosts a dedicated VPC with an EKS cluster and a hosted VP
 
 We run our instance ArgoCD from the management account and deploys are pushed out using the network access that the management account has. This gives us a single pane of glass as the management account produces deployments, while workload accounts’ clusters consume them.
 
-Cross-account IAM roles in each workload account will be used for delegated access, ensuring centralized governance and streamlined user lifecycle management across the organization.
-
 ## Application Architecture
 
 <img src="https://github.com/dblqr/arch/blob/main/files/arch-Application.png?raw=true">
