@@ -397,7 +397,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
     - Monitoring and alerting set up for invocation errors and throttling.
     - Baseline alerts set up for Lambda execution durations.
 
-### Deployment Infrastructure
+### Deployment Monitoring
 
 Throughout the CI/CD process observability should be baked into the build and deployment lifecycles.
 
