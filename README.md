@@ -1,8 +1,40 @@
 # **Infrastructure Design Scenario**
 
+<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+
+- [Objective](#objective)
+- [The Applications](#the-applications)
+- [The Tools](#the-tools)
+- [AWS Accounts and Access Model](#aws-accounts-and-access-model)
+- [AWS Account Layers](#aws-account-layers)
+  - [Network and Compute Layer](#network-and-compute-layer)
+  - [Application Layer](#application-layer)
+  - [The Management Account Layer](#the-management-account-layer)
+- [Application Architecture](#application-architecture)
+- [Other Architectural Considerations](#other-architectural-considerations)
+  - [Isolation](#isolation)
+  - [Disaster recovery](#disaster-recovery)
+  - [Redundancy](#redundancy)
+- [Secrets Management in EKS](#secrets-management-in-eks)
+- [The Deployment Process](#the-deployment-process)
+- [Deployments With Helm Charts and ArgoCD](#deployments-with-helm-charts-and-argocd)
+- [Canary Releases using ArgoCD Rollouts](#canary-releases-using-argocd-rollouts)
+- [The Observability Layer](#the-observability-layer)
+  - [Application Monitoring and Logging](#application-monitoring-and-logging)
+  - [Infrastructure Monitoring and Observability](#infrastructure-monitoring-and-observability)
+  - [Deployment Monitoring](#deployment-monitoring)
+    - [Builds](#builds)
+    - [Deployments](#deployments)
+
+<!-- TOC end -->
+
+<!-- TOC --><a name="objective"></a>
+
 ## Objective
 
 _Define a repeatable consistent architecture for the facilitation of a production application as well as defining the necessary tooling and workflow processes for its successful deployment_
+
+<!-- TOC --><a name="the-applications"></a>
 
 ## The Applications
 
@@ -10,6 +42,8 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 - Varied architectures including a backend API, async handlers, a message bus, and background workers.
   - An assumption of the application's usage being a payments process as well as an email notification service to facilitate some of the requirements around the varied architectures.
 - An Internal Admin tool only available to the support team.
+
+<!-- TOC --><a name="the-tools"></a>
 
 ## The Tools
 
@@ -22,6 +56,8 @@ _Define a repeatable consistent architecture for the facilitation of a productio
   - Deployed in the management account
 - **Argo Rollouts**
   - Used to facilitate canary deployments
+
+<!-- TOC --><a name="aws-accounts-and-access-model"></a>
 
 ## AWS Accounts and Access Model
 
@@ -39,9 +75,13 @@ This access model provides granular control of user onboarding and offboarding b
 
 From the Management Account, global governance is enforced using Service Control Policies (SCPs) to apply baseline security and compliance standards consistently across all accounts.
 
+<!-- TOC --><a name="aws-account-layers"></a>
+
 ## AWS Account Layers
 
 A secure, multi-account AWS architecture with management and application accounts. The management account provides centralized identity, governance, and shared networking via Transit Gateway and VPN, while application accounts host EKS workloads, isolated load balancers, CloudFront distribution, and core managed services, all provisioned through Terraform.
+
+<!-- TOC --><a name="network-and-compute-layer"></a>
 
 ### Network and Compute Layer
 
@@ -59,6 +99,8 @@ All services run in private subnets across three Availability Zones. The NAT Gat
 
 The base AWS account infrastructure is created in terraform and is hosted in a repository that is responsible for the deployment of the shared infrastructure as well as the payments application infrastructure.
 
+<!-- TOC --><a name="application-layer"></a>
+
 ### Application Layer
 
 <img src="https://github.com/dblqr/arch/blob/main/files/Kubernetes-Traffic.png?raw=true">
@@ -75,6 +117,8 @@ Each application should, if necessary, have an IAM role + policy which makes sho
 
 The applications will follow the [12 factor pattern](https://12factor.net/) which allows for configuration via environment variables which are mounted via ConfigMaps.
 
+<!-- TOC --><a name="the-management-account-layer"></a>
+
 ### The Management Account Layer
 
 <img src="https://github.com/dblqr/arch/blob/main/files/arch-Multi-Account.png?raw=true">
@@ -82,6 +126,8 @@ The applications will follow the [12 factor pattern](https://12factor.net/) whic
 The management account hosts a dedicated VPC with an EKS cluster and a hosted VPN for access for internal tools that has network access to the other VPCs in the test, pre-prod, and production accounts.
 
 We run our instance ArgoCD from the management account and deploys are pushed out using the network access that the management account has. This gives us a single pane of glass as the management account produces deployments, while workload accounts’ clusters consume them.
+
+<!-- TOC --><a name="application-architecture"></a>
 
 ## Application Architecture
 
@@ -99,7 +145,11 @@ If the Lambda Function fails at any point, retry logic is built into the system 
 
 SES also handles email notifications such as receipts or alerts when the process completes or fails.
 
+<!-- TOC --><a name="other-architectural-considerations"></a>
+
 ## Other Architectural Considerations
+
+<!-- TOC --><a name="isolation"></a>
 
 ### Isolation
 
@@ -107,11 +157,15 @@ SES also handles email notifications such as receipts or alerts when the process
 - Workloads can utilize mTLS to ensure that both the client and server in the request agree on who they are sending/receiving data from.
 - RBAC permissions will be set up to limit the scope of service accounts, users, and applications.
 
+<!-- TOC --><a name="disaster-recovery"></a>
+
 ### Disaster recovery
 
 - All stateful datastores use AWS snapshots or AWS backup for DR
 - Kubernetes cluster state is defined in GitOps and stateless services can be restored into any new cluster.
 - All S3 Buckets replicate data to a replication bucket and versioning is enabled on all objects.
+
+<!-- TOC --><a name="redundancy"></a>
 
 ### Redundancy
 
@@ -121,6 +175,8 @@ SES also handles email notifications such as receipts or alerts when the process
   https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
 - The production database will have a multi AZ set up with a replica to allow for redundancy or multi region if necessary.
 
+<!-- TOC --><a name="secrets-management-in-eks"></a>
+
 ## Secrets Management in EKS
 
 All secrets will be stored in a repository using [SOPS](https://github.com/getsops/sops) which encrypts the data using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
@@ -128,6 +184,8 @@ All secrets will be stored in a repository using [SOPS](https://github.com/getso
 The secrets being located in AWS Secrets Manager, enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime.
 
 For added security, the application could reach directly to Secrets Manager to fetch secrets at runtime, using an IRSA role and a service account. This pattern allows for applications secrets to be pulled into memory versus the applications container environment.
+
+<!-- TOC --><a name="the-deployment-process"></a>
 
 ## The Deployment Process
 
@@ -203,6 +261,8 @@ If dev tests pass, the build is promoted to pre-prod for smoke, E2E, performance
 
 Only after all tests pass and approved, the build is promoted to production. The deployment uses a canary strategy with automated rollback if analysis detects issues based upon specified metrics.>
 
+<!-- TOC --><a name="deployments-with-helm-charts-and-argocd"></a>
+
 ## Deployments With Helm Charts and ArgoCD
 
 <img src="https://github.com/dblqr/arch/blob/main/files/arch-ArgoCD.png?raw=true">
@@ -214,6 +274,8 @@ When a build and release for the application takes place, the helm chart is vers
 From there, the CI/CD deployment process triggers an API call to ArgoCD to deploy the specific version of the helm chart which contains the released application. The deployment targets the specific environment based on where the deployment process is in the merge queue.
 
 As a part of the deployment process we will also utilize pre/post hooks for certain actions like database migrations or running post scripts.
+
+<!-- TOC --><a name="canary-releases-using-argocd-rollouts"></a>
 
 ## Canary Releases using ArgoCD Rollouts
 
@@ -317,9 +379,13 @@ spec:
                 args: ["-sfS", "http://app-canary.prod.svc/healthz"]
 ```
 
+<!-- TOC --><a name="the-observability-layer"></a>
+
 ## The Observability Layer
 
 Throughout the entire application release process, as well as at an AWS account and infrastructure level, observability, monitoring and alerting are baked into the release lifecycle.
+
+<!-- TOC --><a name="application-monitoring-and-logging"></a>
 
 ### Application Monitoring and Logging
 
@@ -341,6 +407,8 @@ We should be collecting and aggregating application logs from many different sou
 Alerts and monitors should be set up for actionable remediation alongside runbooks versus causing alert fatigue.
 
 As an example, we _should_ alert on if there is increased latency in the application or if we have an anomalous increase in 5XX errors.
+
+<!-- TOC --><a name="infrastructure-monitoring-and-observability"></a>
 
 ### Infrastructure Monitoring and Observability
 
@@ -391,15 +459,21 @@ To allow for confidence in all our integrated systems we need to make sure that 
     - Monitoring and alerting set up for invocation errors and throttling.
     - Baseline alerts set up for Lambda execution durations.
 
+<!-- TOC --><a name="deployment-monitoring"></a>
+
 ### Deployment Monitoring
 
 Throughout the CI/CD process observability should be baked into the build and deployment lifecycles.
+
+<!-- TOC --><a name="builds"></a>
 
 #### Builds
 
 - If a build fails in CI/CD it should be blocked as a part of required repository checks.
 - Tests should also follow the same pattern.
 - Failed build logs should be triaged for patterns if failures are persistent and prioritized for fixes.
+
+<!-- TOC --><a name="deployments"></a>
 
 #### Deployments
 
