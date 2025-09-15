@@ -193,8 +193,8 @@ jobs:
         with:
           push: false
           context: src/app
-          cache-from: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.METRICS_SERVER_REPO_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.APP_REPO_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.APP_REPO_NAME }}:buildcache,mode=max
 ```
 
 Once approved and tested, PRs are queued to merge into main sequentially using a merge queue. Once the merge takes place a deploy occurs to the test environment and the PR env is spun down. Once the application is available smoke and E2E tests run.
