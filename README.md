@@ -125,7 +125,7 @@ SES also handles email notifications such as receipts or alerts when the process
 
 ## Secrets Management in EKS
 
-All secrets will be stored in repository using [SOPS](https://github.com/getsops/sops) which encrypts the data using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
+All secrets will be stored in a repository using [SOPS](https://github.com/getsops/sops) which encrypts the data using [AWS KMS keys](https://github.com/getsops/sops?tab=readme-ov-file#using-sops-yaml-conf-to-select-kms-pgp-and-age-for-new-files) per environment. The secrets are created in terraform and only Admin accounts will be able to decrypt and add SOPS secrets for production.
 
 The secrets being located in AWS Secrets Manager, enables you to use open source tooling such as External Secrets Operator, or read them at the application runtime.
 
@@ -399,7 +399,7 @@ To allow for confidence in all our integrated systems we need to make sure that 
 
 ### Deployment Infrastructure
 
-Throughout the CI/CD process observability should be baked into the build, release, and deployment lifecycles.
+Throughout the CI/CD process observability should be baked into the build and deployment lifecycles.
 
 #### Builds
 
