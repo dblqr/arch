@@ -14,7 +14,7 @@ _Define a repeatable consistent architecture for the facilitation of a productio
 ## The Tools
 
 - **Github Actions**
-  - Handles Builds, Tests and Triggers ArgoCD Deployments
+  - Handles builds, tests, releases, and triggers ArgoCD deployments
 - **EKS**
 - **Docker**
 - **Helm**
