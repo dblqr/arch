@@ -321,9 +321,7 @@ spec:
 
 Throughout the entire application release process, as well as at an AWS account and infrastructure level, observability, monitoring and alerting are baked into the release lifecycle.
 
-### Application Logging and Monitoring
-
-#### Application Monitoring
+### Application Monitoring and Logging
 
 Throughout the applications lifecycle we want to monitor for specific KPI's, for example:
 
@@ -338,9 +336,7 @@ Throughout the applications lifecycle we want to monitor for specific KPI's, for
 
 These metrics are collected from many sources across the stack like EKS, ALBs, RDS, DynamoDB, SQS, etc. and should be aggregated in monitoring and alerting tools like Cloudwatch, Datadog or visualization tools like Grafana.
 
-#### Application Logs
-
-We would be collecting and aggregating application logs from many different sources like application logs/container logs from EKS, load balancer logs from the ALBS or K8s Ingresses, or CloudFront logs centralized via CloudWatch Logs or a log pipeline to Datadog or similar.
+We should be collecting and aggregating application logs from many different sources like application logs/container logs from EKS, load balancer logs from the ALBS or K8s Ingresses, or CloudFront logs centralized via CloudWatch Logs or a log pipeline to Datadog or similar.
 
 Alerts and monitors should be set up for actionable remediation alongside runbooks versus causing alert fatigue.
 
